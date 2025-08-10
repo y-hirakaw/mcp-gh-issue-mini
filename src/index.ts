@@ -2,18 +2,12 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { GitHubAPI } from './api/github-api.js';
+import { logger, enableDebugLogging } from './utils/logger.js';
 
-/* ------------------------------------------------------------------ */
-/*  定数                                                              */
-/* ------------------------------------------------------------------ */
-const GITHUB_API_BASE = "https://api.github.com";
-const USER_AGENT = "mcp-gh-issue-mini/1.1.0";
-const AI_COMMENT_IDENTIFIER = "[AI] Generated using MCP\n\n";
-
-interface RequestOptions {
-  method?: string;
-  headers?: Record<string, string>;
-  body?: any;
+// Enable debug logging if environment variable is set
+if (process.env.DEBUG_MCP_GH_ISSUE) {
+  enableDebugLogging();
 }
 
 /* ------------------------------------------------------------------ */
@@ -21,72 +15,12 @@ interface RequestOptions {
 /* ------------------------------------------------------------------ */
 const server = new McpServer({
   name: "mcp-gh-issue-mini",
-  version: "1.1.0",
+  version: "1.1.1",
   capabilities: { resources: {}, tools: {} },
 });
 
-/* ------------------------------------------------------------------ */
-/*  共通ヘルパ                                                        */
-/* ------------------------------------------------------------------ */
-async function parseResponseBody(res: Response): Promise<unknown> {
-  const ct = res.headers.get("content-type") ?? "";
-  return ct.includes("application/json") ? res.json() : res.text();
-}
-function createGitHubError(status: number, body: unknown): Error {
-  const msg = typeof body === "string" ? body : JSON.stringify(body);
-  return new Error(`GitHub API error! Status: ${status}. Message: ${msg}`);
-}
-
-async function githubRequest<T>(url: string, opts: RequestOptions = {}): Promise<T> {
-  const headers: Record<string, string> = {
-    Accept: "application/vnd.github.v3+json",
-    "Content-Type": "application/json",
-    "User-Agent": USER_AGENT,
-    "X-GitHub-Api-Version": "2022-11-28",
-    ...opts.headers,
-  };
-  if (process.env.GITHUB_PERSONAL_ACCESS_TOKEN) {
-    headers.Authorization = `Bearer ${process.env.GITHUB_PERSONAL_ACCESS_TOKEN}`;
-  } else {
-    throw new Error("GITHUB_PERSONAL_ACCESS_TOKEN が未設定です。");
-  }
-
-  const res = await fetch(url, {
-    method: opts.method ?? "GET",
-    headers,
-    body: opts.body ? JSON.stringify(opts.body) : undefined,
-  });
-  const body = await parseResponseBody(res);
-  if (!res.ok) throw createGitHubError(res.status, body);
-  return body as T;
-}
-
-/* ------------------------------------------------------------------ */
-/*  型定義                                                            */
-/* ------------------------------------------------------------------ */
-interface Issue {
-  number: number;
-  title: string;
-  html_url: string;
-  state: string;
-  user: { login: string };
-  created_at: string;
-  updated_at: string;
-  body?: string;
-  labels?: { name: string }[];
-}
-
-interface IssueComment {
-  id: number;
-  body: string;
-  user: { login: string };
-  created_at: string;
-  html_url: string;
-}
-
-interface SearchIssuesResp {
-  items: Issue[];
-}
+// Initialize GitHub API client
+const githubAPI = new GitHubAPI();
 
 /* ------------------------------------------------------------------ */
 /*  Tools                                                             */
@@ -103,11 +37,17 @@ server.tool(
     body: z.string().optional(),
   },
   async ({ owner, repo, title, body = "" }) => {
-    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/issues`;
-    const issue = await githubRequest<Issue>(url, { method: "POST", body: { title, body } });
-    return {
-      content: [{ type: "text", text: `Issue created! #${issue.number}: ${issue.title}\nURL: ${issue.html_url}` }],
-    };
+    try {
+      const issue = await githubAPI.createIssue(owner, repo, title, body);
+      return {
+        content: [{ type: "text", text: `Issue created! #${issue.number}: ${issue.title}\nURL: ${issue.html_url}` }],
+      };
+    } catch (error) {
+      logger.error('Failed to create issue:', error);
+      return {
+        content: [{ type: "text", text: `Error creating issue: ${error instanceof Error ? error.message : 'Unknown error'}` }],
+      };
+    }
   }
 );
 
@@ -121,21 +61,28 @@ server.tool(
     limit: z.number().optional(),
   },
   async ({ owner, repo, limit = 10 }) => {
-    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/issues?state=open&per_page=${limit}`;
-    const issues = await githubRequest<Issue[]>(url);
+    try {
+      const issues = await githubAPI.listOpenIssues(owner, repo, limit);
 
-    if (issues.length === 0)
-      return { content: [{ type: "text", text: "No open issues 🎉" }] };
+      if (issues.length === 0) {
+        return { content: [{ type: "text", text: "No open issues 🎉" }] };
+      }
 
-    const formatted = issues
-      .map(
-        (is) =>
-          `#${is.number}: ${is.title}\n` +
-          `By: ${is.user.login} | ${new Date(is.created_at).toLocaleString()}\n` +
-          `URL: ${is.html_url}\n---`
-      )
-      .join("\n");
-    return { content: [{ type: "text", text: formatted }] };
+      const formatted = issues
+        .map(
+          (issue) =>
+            `#${issue.number}: ${issue.title}\n` +
+            `By: ${issue.user.login} | ${new Date(issue.created_at).toLocaleString()}\n` +
+            `URL: ${issue.html_url}\n---`
+        )
+        .join("\n");
+      return { content: [{ type: "text", text: formatted }] };
+    } catch (error) {
+      logger.error('Failed to list open issues:', error);
+      return {
+        content: [{ type: "text", text: `Error listing issues: ${error instanceof Error ? error.message : 'Unknown error'}` }],
+      };
+    }
   }
 );
 
@@ -150,14 +97,17 @@ server.tool(
     body: z.string(),
   },
   async ({ owner, repo, issue_number, body }) => {
-    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/issues/${issue_number}/comments`;
-    const c = await githubRequest<IssueComment>(url, {
-      method: "POST",
-      body: { body: AI_COMMENT_IDENTIFIER + body },
-    });
-    return {
-      content: [{ type: "text", text: `Comment added to issue #${issue_number}\nURL: ${c.html_url}` }],
-    };
+    try {
+      const comment = await githubAPI.addIssueComment(owner, repo, issue_number, body);
+      return {
+        content: [{ type: "text", text: `Comment added to issue #${issue_number}\nURL: ${comment.html_url}` }],
+      };
+    } catch (error) {
+      logger.error('Failed to add comment:', error);
+      return {
+        content: [{ type: "text", text: `Error adding comment: ${error instanceof Error ? error.message : 'Unknown error'}` }],
+      };
+    }
   }
 );
 
@@ -171,19 +121,26 @@ server.tool(
     issue_number: z.number(),
   },
   async ({ owner, repo, issue_number }) => {
-    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/issues/${issue_number}/comments`;
-    const comments = await githubRequest<IssueComment[]>(url);
+    try {
+      const comments = await githubAPI.getIssueComments(owner, repo, issue_number);
 
-    if (comments.length === 0)
-      return { content: [{ type: "text", text: `No comments on issue #${issue_number}` }] };
+      if (comments.length === 0) {
+        return { content: [{ type: "text", text: `No comments on issue #${issue_number}` }] };
+      }
 
-    const formatted = comments
-      .map(
-        (c) =>
-          `By: ${c.user.login} at ${new Date(c.created_at).toLocaleString()}\n${c.body}\nURL: ${c.html_url}\n---`
-      )
-      .join("\n");
-    return { content: [{ type: "text", text: formatted }] };
+      const formatted = comments
+        .map(
+          (comment) =>
+            `By: ${comment.user.login} at ${new Date(comment.created_at).toLocaleString()}\n${comment.body}\nURL: ${comment.html_url}\n---`
+        )
+        .join("\n");
+      return { content: [{ type: "text", text: formatted }] };
+    } catch (error) {
+      logger.error('Failed to get comments:', error);
+      return {
+        content: [{ type: "text", text: `Error getting comments: ${error instanceof Error ? error.message : 'Unknown error'}` }],
+      };
+    }
   }
 );
 
@@ -197,9 +154,15 @@ server.tool(
     issue_number: z.number(),
   },
   async ({ owner, repo, issue_number }) => {
-    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/issues/${issue_number}`;
-    const issue = await githubRequest<Issue>(url, { method: "PATCH", body: { state: "closed" } });
-    return { content: [{ type: "text", text: `Issue #${issue.number} closed. URL: ${issue.html_url}` }] };
+    try {
+      const issue = await githubAPI.closeIssue(owner, repo, issue_number);
+      return { content: [{ type: "text", text: `Issue #${issue.number} closed. URL: ${issue.html_url}` }] };
+    } catch (error) {
+      logger.error('Failed to close issue:', error);
+      return {
+        content: [{ type: "text", text: `Error closing issue: ${error instanceof Error ? error.message : 'Unknown error'}` }],
+      };
+    }
   }
 );
 
@@ -216,24 +179,31 @@ server.tool(
     state: z.enum(["open", "closed"]).optional(),
   },
   async ({ owner, repo, issue_number, title, body, state }) => {
-    if (!title && !body && !state)
+    if (!title && !body && !state) {
       return { content: [{ type: "text", text: "Nothing to update. Specify at least one field." }] };
+    }
 
-    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/issues/${issue_number}`;
-    const payload: Record<string, unknown> = {};
-    if (title) payload.title = title;
-    if (body) payload.body = body;
-    if (state) payload.state = state;
+    try {
+      const updates: { title?: string; body?: string; state?: 'open' | 'closed' } = {};
+      if (title) updates.title = title;
+      if (body) updates.body = body;
+      if (state) updates.state = state;
 
-    const issue = await githubRequest<Issue>(url, { method: "PATCH", body: payload });
-    return {
-      content: [
-        {
-          type: "text",
-          text: `Issue #${issue.number} updated.\nTitle: ${issue.title}\nState: ${issue.state}\nURL: ${issue.html_url}`,
-        },
-      ],
-    };
+      const issue = await githubAPI.updateIssue(owner, repo, issue_number, updates);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Issue #${issue.number} updated.\nTitle: ${issue.title}\nState: ${issue.state}\nURL: ${issue.html_url}`,
+          },
+        ],
+      };
+    } catch (error) {
+      logger.error('Failed to update issue:', error);
+      return {
+        content: [{ type: "text", text: `Error updating issue: ${error instanceof Error ? error.message : 'Unknown error'}` }],
+      };
+    }
   }
 );
 
@@ -247,20 +217,26 @@ server.tool(
     issue_number: z.number(),
   },
   async ({ owner, repo, issue_number }) => {
-    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/issues/${issue_number}`;
-    const issue = await githubRequest<Issue>(url);
+    try {
+      const issue = await githubAPI.getIssue(owner, repo, issue_number);
 
-    const labels = issue.labels?.map((l) => l.name).join(", ") ?? "(none)";
-    const text =
-      `#${issue.number}: ${issue.title}\n` +
-      `State: ${issue.state}\n` +
-      `Author: ${issue.user.login}\n` +
-      `Created: ${new Date(issue.created_at).toLocaleString()}\n` +
-      `Updated: ${new Date(issue.updated_at).toLocaleString()}\n` +
-      `Labels: ${labels}\n\n` +
-      `${issue.body ?? ""}\n\nURL: ${issue.html_url}`;
+      const labels = issue.labels?.map((l) => l.name).join(", ") ?? "(none)";
+      const text =
+        `#${issue.number}: ${issue.title}\n` +
+        `State: ${issue.state}\n` +
+        `Author: ${issue.user.login}\n` +
+        `Created: ${new Date(issue.created_at).toLocaleString()}\n` +
+        `Updated: ${new Date(issue.updated_at).toLocaleString()}\n` +
+        `Labels: ${labels}\n\n` +
+        `${issue.body ?? ""}\n\nURL: ${issue.html_url}`;
 
-    return { content: [{ type: "text", text }] };
+      return { content: [{ type: "text", text }] };
+    } catch (error) {
+      logger.error('Failed to get issue:', error);
+      return {
+        content: [{ type: "text", text: `Error getting issue: ${error instanceof Error ? error.message : 'Unknown error'}` }],
+      };
+    }
   }
 );
 
@@ -275,22 +251,28 @@ server.tool(
     limit: z.number().optional(),
   },
   async ({ owner, repo, query, limit = 10 }) => {
-    const searchQuery = encodeURIComponent(`repo:${owner}/${repo} is:issue ${query}`);
-    const url = `${GITHUB_API_BASE}/search/issues?q=${searchQuery}&per_page=${limit}`;
-    const res = await githubRequest<SearchIssuesResp>(url);
+    try {
+      const issues = await githubAPI.searchIssues(owner, repo, query, limit);
 
-    if (res.items.length === 0)
-      return { content: [{ type: "text", text: "No issues matched your query." }] };
+      if (issues.length === 0) {
+        return { content: [{ type: "text", text: "No issues matched your query." }] };
+      }
 
-    const formatted = res.items
-      .map(
-        (is) =>
-          `#${is.number}: ${is.title}\n` +
-          `State: ${is.state} | By: ${is.user.login}\n` +
-          `URL: ${is.html_url}\n---`
-      )
-      .join("\n");
-    return { content: [{ type: "text", text: formatted }] };
+      const formatted = issues
+        .map(
+          (issue) =>
+            `#${issue.number}: ${issue.title}\n` +
+            `State: ${issue.state} | By: ${issue.user.login}\n` +
+            `URL: ${issue.html_url}\n---`
+        )
+        .join("\n");
+      return { content: [{ type: "text", text: formatted }] };
+    } catch (error) {
+      logger.error('Failed to search issues:', error);
+      return {
+        content: [{ type: "text", text: `Error searching issues: ${error instanceof Error ? error.message : 'Unknown error'}` }],
+      };
+    }
   }
 );
 
@@ -298,11 +280,26 @@ server.tool(
 /*  Main                                                              */
 /* ------------------------------------------------------------------ */
 async function main() {
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  console.error("GitHub Issue MCP Server running on stdio");
+  try {
+    logger.info('Initializing GitHub Issue MCP Server...');
+    
+    // Initialize GitHub API authentication
+    await githubAPI.initialize();
+    
+    // Log authentication status
+    const authStatus = githubAPI.getAuthStatus();
+    logger.info(`Authentication successful: ${authStatus.method}`);
+    
+    const transport = new StdioServerTransport();
+    await server.connect(transport);
+    logger.info("GitHub Issue MCP Server running on stdio");
+  } catch (error) {
+    logger.error('Failed to initialize server:', error);
+    process.exit(1);
+  }
 }
+
 main().catch((err) => {
-  console.error("Fatal error in main():", err);
+  logger.error("Fatal error in main():", err);
   process.exit(1);
 });
