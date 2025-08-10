@@ -41,14 +41,15 @@ npx mcp-gh-issue-mini
         "command": "npx",
         "args": ["mcp-gh-issue-mini"],
         "env": {
-          "GITHUB_PERSONAL_ACCESS_TOKEN": "${env:GITHUB_PERSONAL_ACCESS_TOKEN}",
-          "DEBUG_MCP_GH_ISSUE": "true"
+          "GITHUB_PERSONAL_ACCESS_TOKEN": "${env:GITHUB_PERSONAL_ACCESS_TOKEN}"
         }
       }
     }
   }
 }
 ```
+
+> **Optional**: Add `"DEBUG_MCP_GH_ISSUE": "true"` to env for detailed logging
 
 ## 🔐 Authentication System
 
