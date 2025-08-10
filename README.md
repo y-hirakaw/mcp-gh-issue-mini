@@ -53,23 +53,20 @@ npx mcp-gh-issue-mini
 
 ## 🔐 Authentication System
 
-### Primary: Personal Access Token
-```bash
-export GITHUB_PERSONAL_ACCESS_TOKEN="your_token_here"
-```
-
-**Required Permissions:**
-| Permission | Access Level |
-|------------|--------------|
-| **Issues** | **Read & Write** |
-| Metadata | Read (automatic) |
-
-### Fallback: GitHub CLI Authentication  
-If no PAT is provided, automatically uses GitHub CLI authentication:
+### Recommended: GitHub CLI Authentication  
 ```bash
 gh auth login  # One-time setup
 npx mcp-gh-issue-mini  # Works immediately
 ```
+
+### Alternative: Personal Access Token
+Set the environment variable `GITHUB_PERSONAL_ACCESS_TOKEN` if you prefer PAT authentication.
+
+**Required PAT Permissions:**
+| Permission | Access Level |
+|------------|--------------|
+| **Issues** | **Read & Write** |
+| Metadata | Read (automatic) |
 
 ### Debug Mode
 ```bash
