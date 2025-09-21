@@ -15,7 +15,7 @@ if (process.env.DEBUG_MCP_GH_ISSUE) {
 /* ------------------------------------------------------------------ */
 const server = new McpServer({
   name: "mcp-gh-issue-mini",
-  version: "1.1.1",
+  version: "1.1.6",
   capabilities: { resources: {}, tools: {} },
 });
 
@@ -29,7 +29,7 @@ const githubAPI = new GitHubAPI();
 /* ---------- 1. create_issue ---------- */
 server.tool(
   "create_issue",
-  "Create a new issue in a GitHub repository（GitHub リポジトリで新しい Issue を作成する）",
+  "Create a new issue in a GitHub repository",
   {
     owner: z.string(),
     repo: z.string(),
@@ -54,7 +54,7 @@ server.tool(
 /* ---------- 2. list_open_issues ---------- */
 server.tool(
   "list_open_issues",
-  "List open issues in a GitHub repository（未クローズの Issue を一覧表示する）",
+  "List open issues in a GitHub repository",
   {
     owner: z.string(),
     repo: z.string(),
@@ -89,7 +89,7 @@ server.tool(
 /* ---------- 3. add_issue_comment ---------- */
 server.tool(
   "add_issue_comment",
-  "Add a comment to a GitHub issue（Issue にコメントを追加する）",
+  "Add a comment to a GitHub issue",
   {
     owner: z.string(),
     repo: z.string(),
@@ -114,7 +114,7 @@ server.tool(
 /* ---------- 4. get_issue_comments ---------- */
 server.tool(
   "get_issue_comments",
-  "Get comments from a GitHub issue（Issue のコメントを取得する）",
+  "Get comments from a GitHub issue",
   {
     owner: z.string(),
     repo: z.string(),
@@ -147,7 +147,7 @@ server.tool(
 /* ---------- 5. close_issue ---------- */
 server.tool(
   "close_issue",
-  "Close a GitHub issue（Issue をクローズする）",
+  "Close a GitHub issue",
   {
     owner: z.string(),
     repo: z.string(),
@@ -169,7 +169,7 @@ server.tool(
 /* ---------- 6. update_issue ---------- */
 server.tool(
   "update_issue",
-  "Update an existing GitHub issue（Issue を更新する）",
+  "Update an existing GitHub issue",
   {
     owner: z.string(),
     repo: z.string(),
@@ -210,7 +210,7 @@ server.tool(
 /* ---------- 7. get_issue ---------- */
 server.tool(
   "get_issue",
-  "Get details of a GitHub issue（Issue の詳細を取得する）",
+  "Get details of a GitHub issue",
   {
     owner: z.string(),
     repo: z.string(),
@@ -243,7 +243,7 @@ server.tool(
 /* ---------- 8. search_issues ---------- */
 server.tool(
   "search_issues",
-  "Search issues in a repository（リポジトリ内の Issue を検索する）",
+  "Search issues in a repository",
   {
     owner: z.string(),
     repo: z.string(),

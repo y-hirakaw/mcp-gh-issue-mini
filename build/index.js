@@ -13,7 +13,7 @@ if (process.env.DEBUG_MCP_GH_ISSUE) {
 /* ------------------------------------------------------------------ */
 const server = new McpServer({
     name: "mcp-gh-issue-mini",
-    version: "1.1.1",
+    version: "1.1.4",
     capabilities: { resources: {}, tools: {} },
 });
 // Initialize GitHub API client
@@ -22,7 +22,7 @@ const githubAPI = new GitHubAPI();
 /*  Tools                                                             */
 /* ------------------------------------------------------------------ */
 /* ---------- 1. create_issue ---------- */
-server.tool("create_issue", "Create a new issue in a GitHub repository（GitHub リポジトリで新しい Issue を作成する）", {
+server.tool("create_issue", "Create a new issue in a GitHub repository", {
     owner: z.string(),
     repo: z.string(),
     title: z.string(),
@@ -42,7 +42,7 @@ server.tool("create_issue", "Create a new issue in a GitHub repository（GitHub 
     }
 });
 /* ---------- 2. list_open_issues ---------- */
-server.tool("list_open_issues", "List open issues in a GitHub repository（未クローズの Issue を一覧表示する）", {
+server.tool("list_open_issues", "List open issues in a GitHub repository", {
     owner: z.string(),
     repo: z.string(),
     limit: z.number().optional(),
@@ -67,7 +67,7 @@ server.tool("list_open_issues", "List open issues in a GitHub repository（未�
     }
 });
 /* ---------- 3. add_issue_comment ---------- */
-server.tool("add_issue_comment", "Add a comment to a GitHub issue（Issue にコメントを追加する）", {
+server.tool("add_issue_comment", "Add a comment to a GitHub issue", {
     owner: z.string(),
     repo: z.string(),
     issue_number: z.number(),
@@ -87,7 +87,7 @@ server.tool("add_issue_comment", "Add a comment to a GitHub issue（Issue にコ
     }
 });
 /* ---------- 4. get_issue_comments ---------- */
-server.tool("get_issue_comments", "Get comments from a GitHub issue（Issue のコメントを取得する）", {
+server.tool("get_issue_comments", "Get comments from a GitHub issue", {
     owner: z.string(),
     repo: z.string(),
     issue_number: z.number(),
@@ -110,7 +110,7 @@ server.tool("get_issue_comments", "Get comments from a GitHub issue（Issue の�
     }
 });
 /* ---------- 5. close_issue ---------- */
-server.tool("close_issue", "Close a GitHub issue（Issue をクローズする）", {
+server.tool("close_issue", "Close a GitHub issue", {
     owner: z.string(),
     repo: z.string(),
     issue_number: z.number(),
@@ -127,7 +127,7 @@ server.tool("close_issue", "Close a GitHub issue（Issue をクローズする�
     }
 });
 /* ---------- 6. update_issue ---------- */
-server.tool("update_issue", "Update an existing GitHub issue（Issue を更新する）", {
+server.tool("update_issue", "Update an existing GitHub issue", {
     owner: z.string(),
     repo: z.string(),
     issue_number: z.number(),
@@ -164,7 +164,7 @@ server.tool("update_issue", "Update an existing GitHub issue（Issue を更新�
     }
 });
 /* ---------- 7. get_issue ---------- */
-server.tool("get_issue", "Get details of a GitHub issue（Issue の詳細を取得する）", {
+server.tool("get_issue", "Get details of a GitHub issue", {
     owner: z.string(),
     repo: z.string(),
     issue_number: z.number(),
@@ -189,7 +189,7 @@ server.tool("get_issue", "Get details of a GitHub issue（Issue の詳細を取�
     }
 });
 /* ---------- 8. search_issues ---------- */
-server.tool("search_issues", "Search issues in a repository（リポジトリ内の Issue を検索する）", {
+server.tool("search_issues", "Search issues in a repository", {
     owner: z.string(),
     repo: z.string(),
     query: z.string().describe("Search keywords (GitHub search syntax)"),
